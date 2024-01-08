@@ -57,7 +57,12 @@ func (o *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error
 	)
 
 	if o.provider == nil {
-		o.provider, _ = o.initProvider(ctx)
+		provider, err := o.initProvider(ctx)
+		if err != nil {
+			res := createResponse(http.StatusInternalServerError)
+			return &res, err
+		}
+		o.provider = provider
 	}
 
 	url := parseURL(req)

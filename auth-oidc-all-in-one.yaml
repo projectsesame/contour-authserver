@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    labels:
+        app: auth-oidc-demo
+    name: auth-oidc-demo
+    namespace: envoy-yang
+spec:
+    selector:
+        matchLabels:
+            app: auth-oidc-demo
+    template:
+        metadata:
+            labels:
+                app: auth-oidc-demo
+        spec:
+            volumes:
+              - name: config
+                configMap:
+                  name: oidc-config
+                  defaultMode: 420
+            containers:
+                - image: release-ci.daocloud.io/skoala/demo/auth-oidc-demo:0.0.1
+                  imagePullPolicy: IfNotPresent
+                  volumeMounts:
+                    - mountPath: /config/config.yaml
+                      name: config
+                      subPath: oidc.yaml
+                  args:
+                    - oidc
+                    - --config=/config/config.yaml
+                  name: auth-oidc-demo
+                  ports:
+                      - containerPort: 10083
+                        name: grpc
+                        protocol: TCP
+            restartPolicy: Always
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 65534
+                runAsGroup: 65534
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: auth-oidc-demo
+    namespace: envoy-yang
+    labels:
+        app: auth-oidc-demo
+spec:
+    type: NodePort
+    ports:
+        - port: 10083
+          targetPort: grpc
+          protocol: TCP
+          name: grpc
+    selector:
+        app: auth-oidc-demo
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oidc-config
+  namespace: envoy-yang
+  labels:
+    app: auth-oidc-demo
+data:
+  oidc.yaml: |
+    ## The following entries are the variables  accepted by the Contour OIDC module.
+    ## server address and port
+    address: ":10083"
+    
+    ## OIDC issuer URL
+    issuerURL: "http://10.6.222.22:30051/dex"
+    
+    ## Gateway access domain name address
+    redirectURL: "https://yangyang.daocloud.io:30443"
+    redirectPath: "/oauth2/callback"
+    allowEmptyClientSecret: false
+    scopes:
+      - openid
+      - profile
+      - email
+      - offline_access
+    usernameClaim: "nickname"
+    emailClaim: ""
+    serveTLS: false
+    clientID: "example-app"
+    clientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0"
+
+---
+---
+#auth策略扩展服务
+apiVersion: projectcontour.io/v1alpha1
+kind: ExtensionService
+metadata:
+  name:  auth-oidc-demo
+  namespace: envoy-yang
+spec:
+  loadBalancerPolicy:
+    strategy: WeightedLeastRequest
+  protocol: h2c
+  timeoutPolicy:
+    response: 10s
+  services:
+    - name: auth-oidc-demo
+      port: 10083
+
